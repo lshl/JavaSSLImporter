@@ -10,6 +10,44 @@
 // Apply the java plugin to add support for Java
 apply plugin: 'java'
 
+sourceCompatibility = 1.7
+targetCompatibility = 1.7
+
+def packageTitle  = "Java SSL certificate importer"
+def versions = [:]
+def revmaj   = ~/^\s+public\s+static\s+final\s+int\s+MAJOR\s+=\s+(\d+)\s*;/
+def revmin   = ~/^\s+public\s+static\s+final\s+int\s+MINOR\s+=\s+(\d+)\s*;/
+def revbld   = ~/^(\s+public\s+static\s+final\s+int\s+BUILD_NUMBER\s+=\s+)(\d+)\s*;/
+def verpth   = "src/main/java/org/lshl/SSLImporterVersion.java"
+task read_versions {
+    description 'Reads the version file ${verpth}'
+    def versions_file = new File(verpth)
+    //println "read_versions  "+versions_file+" exists "+versions_file.exists()
+    try {
+        versions_file.eachLine {
+            line ->
+                def matcher = revmaj.matcher(line)
+                if (matcher.find()) {
+                    versions["major"] = matcher.group(1) as Integer
+                }
+                matcher = revmin.matcher(line)
+                if (matcher.find()) {
+                    versions["minor"] = matcher.group(1) as Integer
+                }
+                matcher = revbld.matcher(line)
+                if (matcher.find()) {
+                    versions["build"] = matcher.group(2) as Integer
+                }
+        }
+    } catch (FileNotFoundException e) {
+        e.printStackTrace()
+        println "Cannot find file " + versions_file.absolutePath
+    }
+//  versions["str"] = versions["major"] + "." + versions["minor"] + "-" + versions["build"] + snapshot
+    versions["str"] = versions["major"] + "." + versions["minor"] + "-" + versions["build"]
+}
+
+
 // In this section you declare where to find the dependencies of your project
 repositories {
     // Use 'jcenter' for resolving your dependencies.
@@ -26,5 +64,35 @@ dependencies {
     // TestNG is also supported by the Gradle Test task. Just change the
     // testCompile dependency to testCompile 'org.testng:testng:6.8.1' and add
     // 'test.useTestNG()' to your build script.
-    testCompile 'junit:junit:4.12'
+    testCompile group: 'junit', name: 'junit', version: '4.+'
 }
+
+jar {
+    version versions.str
+    manifest {
+        attributes("Package-Title"  : packageTitle,
+                   "Package-Version": version,
+                   "Main-Class"     : "org.lshl.util.SSLImport")
+    }
+}
+
+compileJava {
+    doFirst {
+        def versions_file = new File(verpth)
+        def contents      = versions_file.getText()
+        def date_millis   = new Date().getTime();
+        contents = contents.replaceAll("(\\s+public\\s+static\\s+final\\s+Date\\s+BUILD_DATE\\s+=\\s+).+;", "\$1new Date(${date_millis}L);")
+        versions_file.write(contents)
+    }
+}
+
+build {
+    doLast {
+        ++versions.build
+        def versions_file = new File(verpth)
+        def contents      = versions_file.getText()
+        contents = contents.replaceAll("(\\s+public\\s+static\\s+final\\s+int\\s+BUILD_NUMBER\\s+=\\s+)(\\d+)\\s*;", "\$1${versions.build};")
+        versions_file.write(contents)
+    }
+}
+
